@@ -1,0 +1,25 @@
+  # Nested group repo manages itself
+  reducing-data-in-visual-ai/
+
+  # Local Claude Code state (machine-specific)
+  .claude/
+
+  # macOS junk
+  .DS_Store
+  **/.DS_Store
+
+  # Python
+  __pycache__/
+  *.pyc
+  *.pyo
+  .venv/
+  venv/
+
+  # LaTeX build artefacts (if you compile the paper here later)
+  *.aux
+  *.log
+  *.out
+  *.toc
+  *.bbl
+  *.blg
+  *.synctex.gz
