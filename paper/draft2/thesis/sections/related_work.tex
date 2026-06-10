@@ -1,0 +1,87 @@
+\section{Related Work}
+\label{sec:related_work}
+
+Most self-supervised methods for images learn representations by making the
+embeddings of two augmented views of the same image agree, while avoiding the
+trivial solution in which every image maps to the same embedding (complete
+collapse). Contrastive methods such as SimCLR~\cite{chen2020simclr} and
+MoCo-v3~\cite{chen2021mocov3} prevent collapse by also pushing apart
+embeddings of different images (negative pairs); self-distillation methods
+such as BYOL~\cite{grill2020byol} and DINO~\cite{caron2021dino} prevent it
+with asymmetry between two networks (momentum encoders, predictor heads);
+masked autoencoders~\cite{he2022mae} avoid view agreement altogether by
+reconstructing masked input patches. Barlow Twins~\cite{zbontar2021barlow}
+instead pushes the cross-correlation matrix between the embeddings of the two
+views toward the identity matrix: the diagonal terms enforce view invariance,
+while the off-diagonal terms decorrelate embedding dimensions, so the
+objective itself penalizes collapse, with neither negative pairs nor network
+asymmetry. We adopt Barlow Twins unchanged --- reference loss implementation
+and published augmentations --- and characterize how it behaves as
+pre-training data shrinks.
+
+How much pre-training data self-supervised learning needs is a well-studied
+question. Contrastive learning has been measured across data quantity,
+domain, and quality: the benefit of pre-training data beyond 500k images is
+modest~\cite{cole2022when}. Closer to our scale, denoising autoencoders
+(BEiT-style masked prediction) have been reported more robust to the size and
+type of the pre-training set than joint-embedding methods --- represented
+there by DINO --- when evaluated by fine-tuning; under linear probing, the
+same study reports denoising autoencoders falling behind joint-embedding
+methods~\cite{elnouby2021largescale}. At the opposite end of the scale,
+joint-embedding training on a large enough dataset needs almost no
+augmentations beyond cropping: hand-crafted augmentations act chiefly by
+artificially enlarging the dataset rather than by enforcing useful
+invariances, so their benefit concentrates where data is
+limited~\cite{moutakanni2024you} --- though the smallest scale tested there
+is 1.3M images, far above ours. These studies chart
+the small-data regime of self-supervised learning across method families, but
+none of them measures Barlow Twins itself in that regime --- so we
+characterize the data efficiency of Barlow Twins directly, on a small ViT,
+from 1k to 100k pre-training images, under a linear-probe evaluation.
+
+Comparing models pre-trained on different set sizes requires a training
+schedule that does not tie model quality to a pre-committed stopping point.
+Cosine learning-rate schedules~\cite{loshchilov2017sgdr} anneal toward a
+fixed horizon, and a checkpoint read out well before that horizon attains
+higher loss than a model whose schedule was matched to that
+duration~\cite{hoffmann2022chinchilla}. Warmup-stable-decay (WSD) schedules
+--- linear warmup, a long constant-rate phase, and a short decay --- match
+the final loss of a well-tuned cosine schedule without committing to a
+horizon~\cite{hagele2024scaling,hu2024minicpm}, with a $(1-\sqrt{t})$ decay
+shape the best performer in the cooldown-shape ablation of H\"agele et
+al.~\cite{hagele2024scaling}. Schedules of this family also have vision
+precedent: vision transformers have been scaled with constant or
+reciprocal-square-root phases followed by a cooldown, coming close to a
+horizon-committed schedule while letting one run serve all training
+durations~\cite{zhai2022scalingvit}, and horizon-free schedules are effective
+for continual pre-training, including masked-autoencoder vision
+models~\cite{singh2025beyond}. So we train every pre-training set size
+with a standard WSD-style schedule, assembled from these published components
+(Section~\ref{sec:method}); the schedule is not a contribution of this work.
+
+Monitoring self-supervised pre-training requires a validation signal without
+labels for the pretext task. Classifying held-in-domain images with a
+$k$-nearest-neighbour ($k$NN) probe on frozen features is the standard such
+monitor, used by DINO with $k{=}20$~\cite{caron2021dino}. The effective rank
+of the representation has been shown to track downstream accuracy, enabling
+fully label-free model selection~\cite{garrido2023rankme}; we log this signal
+but do not select with it. Selecting the best value of a repeatedly evaluated
+validation signal inflates the selected estimate --- over-fitting in model
+selection~\cite{cawley2010overfitting}. So we select checkpoints by an
+in-domain $k$NN probe in the DINO style and smooth the validation curve
+before taking its maximum, to reduce selection bias.
+
+A representation can degrade without collapsing completely: in dimensional
+collapse, the embedding variance concentrates in a low-dimensional
+subspace~\cite{jing2022dimensional}, which the effective rank of the feature
+covariance spectrum quantifies~\cite{roy2007effective}. Augmentations are not
+a free remedy in this regime: the invariances a joint-embedding method learns
+are the invariances its augmentations define~\cite{xiao2021what}, and views
+that share too little information destroy task-relevant
+signal~\cite{tian2020infomin}; for supervised ViTs, augmentation and
+regularization can substitute for an order of magnitude of training
+data~\cite{steiner2022train}, underlining how strongly augmentation choices
+act as implicit data. So in the small-data regime we keep the published
+augmentation recipe fixed, track effective rank as a logged collapse
+diagnostic, and instead vary a capacity knob that is specific to Barlow Twins
+--- the projector width.

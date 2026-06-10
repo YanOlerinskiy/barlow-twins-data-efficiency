@@ -101,7 +101,7 @@ checkpoints/                                 .gitignored; ~28 MB each, both fina
 - **lightly over solo-learn / Facebook ref**: lightly's loss + projector + transforms are a clean drop-in for our HF ViT backbone. solo-learn is Hydra+Lightning (too invasive). Facebook ref is hardcoded for ResNet-50 + LARS + 8-GPU DDP.
 - **λ = 1e-2** (paper: 5e-3 with D=8192; ours: 1e-2 with D=1024). Rule: keep λ·D in a comparable order of magnitude (paper ≈ 41, ours ≈ 10). Mentioned in CLAUDE.md.
 - **Projector 192 → 1024 → 1024**, lightly's default 3-layer structure. Paper's 8192 would be larger than the encoder itself.
-- **min_scale=0.25** for `RandomResizedCrop` (paper / lightly default 0.08). At 64×64, 0.08 gives ~18×18 crops which are degenerate and trigger collapse.
+- **min_scale=0.25** for `RandomResizedCrop` (paper / lightly default 0.08). At 64×64, 0.08 gives ~18×18 crops (≈2×2 ViT patches of content) — too little shared view content. A-priori choice; never ablated, and no measured "collapse at 0.08" exists (corrected 2026-06-10; BT resists complete collapse by construction — don't claim it).
 - **GaussianBlur disabled** on both views. The paper's 23-pixel kernel covers >⅓ of a 64×64 image.
 - **Asymmetric solarization preserved** (view 1 p=0, view 2 p=0.2) — the BT/BYOL signature.
 - **AdamW lr=3e-4 over LARS**: LARS is for batch 2048+; we run at batch 256. AdamW is the modern ViT-SSL standard.

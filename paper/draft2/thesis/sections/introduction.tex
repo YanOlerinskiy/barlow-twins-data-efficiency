@@ -1,0 +1,96 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Pre-training a visual foundation model~\cite{bommasani2021foundation} is
+expensive twice over: it takes millions of images and the compute to
+match~\cite{caron2021dino,he2022mae}. Self-supervised learning (SSL) removes
+the annotation cost by training image representation models on unlabelled
+images~\cite{chen2020simclr,zbontar2021barlow}, but the appetite for data and
+compute remains, so groups without either --- university labs, small
+companies --- can rarely train or even study these models. Making SSL useful
+in that setting requires understanding how SSL methods behave when both the
+pre-training dataset and the compute budget are small. This work
+characterizes one widely used SSL method, Barlow
+Twins~\cite{zbontar2021barlow}, in exactly that regime.
+
+We study the question along the data axis. We define the \emph{data
+efficiency} of a pre-training method as how its downstream accuracy grows
+with the number of unique pre-training images $N$. The pre-training set size
+$N$ is our only controlled variable: we deliberately do \emph{not} hold the
+number of training steps equal across set sizes, because equal steps would
+mean each image in a small set is seen many times more often, turning the
+comparison into a compute question rather than a data question. Instead,
+every set size trains under a generous fixed epoch budget, and we evaluate
+the checkpoint that a standard label-free validation signal selects within
+that budget (Section~\ref{sec:method}). We do not claim these models are
+trained to convergence; we claim they are trained long enough that the
+selected checkpoint is past the point where more training helps, and we
+disclose per set size whether that held.
+
+Figure~\ref{fig:pipeline} shows the experimental pipeline. A small vision
+transformer (ViT-Tiny with $8\times8$ patches, 5.4M
+parameters)~\cite{dosovitskiy2021vit,touvron2021deit} is pre-trained with
+Barlow Twins on subsets of Tiny-ImageNet~\cite{le2015tinyimagenet} ranging
+from 1\,000 to 100\,000 images. The encoder is then frozen, and a linear
+classifier is trained on CIFAR-10~\cite{krizhevsky2009cifar}; its test
+accuracy --- the \emph{linear-probe accuracy} --- measures the quality of the
+learned representation on a downstream task the encoder never saw. This
+pipeline is a deliberately scaled-down version of the foundation-model
+recipe: pre-train once on broad data, adapt cheaply to a downstream task.
+The study is part of a five-student project in which each student applies a
+different SSL method to this shared pipeline (same backbone, same data
+subsets, same probe); we chose Barlow Twins, and this paper characterizes
+its behaviour.
+
+Barlow Twins is an interesting subject for a small-data study. It learns by
+pushing the cross-correlation matrix between the embeddings of two augmented
+views of the same images toward the identity matrix, which makes
+representational collapse unattractive by construction, without the negative
+pairs of contrastive methods~\cite{chen2020simclr} or the asymmetric
+momentum/predictor networks of self-distillation
+methods~\cite{grill2020byol,caron2021dino}. At the same time, the
+joint-embedding family it belongs to has been reported to depend more
+strongly on large pre-training sets than masked-prediction
+alternatives~\cite{elnouby2021largescale}. Small-data SSL in general is well
+studied (Section~\ref{sec:related_work}); Barlow Twins specifically, at this
+small a scale and on a small ViT, is not --- its small-data behaviour is both
+scarcely described and, given its family's reported data appetite, not
+obvious in advance.
+
+We therefore ask: \emph{how does the downstream accuracy of Barlow Twins
+scale with pre-training set size for a small vision transformer in a
+small-compute regime, and how does it behave at the smallest scales?}
+
+Our contributions are:
+\begin{itemize}
+  \item A characterization of the Barlow Twins data-efficiency curve
+        (Tiny-ImageNet $\rightarrow$ CIFAR-10 linear probe) for a ViT-Tiny
+        across $N \in \{1\mathrm{k}, \ldots, 100\mathrm{k}\}$, reported
+        against a random-initialization baseline.
+  \item An empirical examination of the smallest-data regime: whether Barlow
+        Twins trains past its accuracy peak and declines (over-training), and
+        whether such a decline coincides with dimensional collapse of the
+        representation, measured by effective
+        rank~\cite{roy2007effective,jing2022dimensional}.
+  \item A study of the interaction between projector width --- the
+        method-specific capacity knob of Barlow Twins --- and pre-training
+        set size.
+\end{itemize}
+All findings are observational and scoped to this setup: one backbone, one
+pre-training dataset, and one downstream task (Section~\ref{sec:limitations}).
+
+\begin{figure}[t]
+  \centering
+  % [PLACEHOLDER --- replaced by figures/pipeline.pdf in the figure pass]
+  \fbox{\parbox[c][4.5cm][c]{0.92\linewidth}{\centering\small
+    Visual abstract (pending): SSL pre-training on Tiny-ImageNet subsets of
+    increasing size $\rightarrow$ frozen encoder $\rightarrow$ CIFAR-10
+    linear probe $\rightarrow$ one accuracy-vs-$N$ curve per SSL method.}}
+  \caption{The data-efficiency pipeline. A ViT-Tiny encoder is pre-trained
+  with Barlow Twins on a Tiny-ImageNet subset of size $N$ (no labels), then
+  frozen; a linear classifier trained on CIFAR-10 measures the downstream
+  accuracy of the learned representation. Repeating this across $N$ from 1k
+  to 100k yields a data-efficiency curve: how much downstream accuracy each
+  amount of unlabelled pre-training data buys.}
+  \label{fig:pipeline}
+\end{figure}

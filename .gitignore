@@ -353,3 +353,7 @@ TSWLatexianTemp*
 # option is specified. Footnotes are the stored in a file with suffix Notes.bib.
 # Uncomment the next line to have this generated file ignored.
 #*Notes.bib
+
+# Built thesis PDFs (template reference PDFs stay tracked)
+paper/draft2/thesis/main.pdf
+paper/draft2/thesis/main_onecolumn.pdf

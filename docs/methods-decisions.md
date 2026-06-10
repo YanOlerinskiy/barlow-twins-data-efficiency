@@ -9,27 +9,35 @@ code; this explains the *why*.
 
 ## 0. Research framing
 
-- **Question (individual):** how data-efficient is Barlow Twins (BT) SSL in a small-compute
-  regime — i.e. how does downstream accuracy scale with pre-training dataset size, and how
-  well can small datasets do when each is trained *to convergence*?
-- **Data vs compute efficiency — a deliberate split.** We study **data efficiency**
-  (accuracy vs #images), *not* compute efficiency (accuracy vs FLOPs). Consequence: we do
-  **not** use an equal-compute / equal-steps schedule across splits (that answers the
-  compute question and confounds the data axis). Each split is trained generously past its
-  own peak and we report its best-achievable accuracy. The x-axis of the learning curve is
-  **#images (N)**; that is the controlled variable. Epochs/steps are just the training-length
-  knob, held generous.
-- **Group context:** 5 students, shared pipeline, one aggregated 5-method learning curve.
-  Shared protocol (backbone, splits, CIFAR-10 linear probe) is fixed; my contribution is the
-  BT method + a rigorous convergence-based training/eval methodology.
+*This document records WHAT we do and the engineering rationale for each choice. It does NOT
+claim novelty: the training recipe and in-domain validation are standard, sensibly-assembled
+components, not contributions. This is a careful characterization study — every empirical
+statement must be backed by a measurement; interpretations are labelled as such.*
+
+- **Question (individual):** how does Barlow Twins' (BT) downstream accuracy scale with
+  pre-training set size for a small ViT in a small-compute regime, and how does it behave at
+  the smallest scales?
+- **Data efficiency, not compute efficiency.** We study accuracy vs **#images (N)** — N is the
+  x-axis / controlled variable. We deliberately do **not** hold compute/steps equal across
+  splits (that would answer a compute-efficiency question). Instead each split trains a
+  **generous fixed epoch budget**, and we report the accuracy of the **best in-domain-validation
+  checkpoint** within that budget (after a short cooldown). **We do NOT claim "convergence"** —
+  the budget may not reach it; any split whose validation is still rising at its budget end is
+  disclosed (and can be extended via resume). Epochs are the training-length knob, held
+  generous; not a controlled variable.
+- **Group context:** 5 students, shared pipeline, one aggregated 5-method data-efficiency
+  curve. Shared protocol (backbone, splits, CIFAR-10 linear probe) is fixed; my part is the BT
+  method and characterizing its small-data behaviour.
 
 ---
 
 ## 1. Backbone & method (shared / inherited)
 
 - **Backbone:** ViT-Tiny/8 at 64×64 — HF `ViTModel`, patch 8 → 64 patch tokens + CLS, 192-dim,
-  12 layers, 3 heads, MLP 768, ~5.7M params. Embedding = **CLS token after final LayerNorm**
-  (`model.embed`). Config in `shared_config.py:VIT_TINY_8_KWARGS`.
+  12 layers, 3 heads, MLP 768, **5,388,480 params** (counted from the code 2026-06-10; the
+  textbook "~5.7M ViT-Tiny" figure is for patch-16@224 — our patch-8@64 embedding layers are
+  smaller; projector adds 2,298,880 → 7,687,360 total). Embedding = **CLS token after final
+  LayerNorm** (`model.embed`). Config in `shared_config.py:VIT_TINY_8_KWARGS`.
 - **Why ViT-Tiny/8 @ 64px:** group-fixed; matches Tiny-ImageNet's native 64px (no upscaling
   for pre-training); small enough for a single consumer GPU.
 - **Barlow Twins loss:** cross-correlation matrix of two views' projector outputs pushed to
@@ -39,8 +47,11 @@ code; this explains the *why*.
   normalization, off-diagonal scaling). Zbontar et al. 2021 (arXiv:2103.03230).
 - **Projector:** 192 → 1024 → 1024 (`BarlowTwinsProjectionHead`). Scaled down from the
   paper's 8192 for ViT-Tiny/small data.
-- **λ = 1e-2** (`--lambda_param`). Note: lightly's default is 5e-3; we use 1e-2, in the BT
-  paper's ablation range for smaller projectors — **disclose this deviation** (one line).
+- **λ = 1e-2** (`--lambda_param`). Note: lightly's default is 5e-3; we use 1e-2. **Corrected
+  2026-06-10:** the BT paper does NOT publish a λ ablation range (it only says "We ran a search
+  … found the best results for λ = 5·10⁻³", at projector D=8192) — so "in the paper's ablation
+  range" is unsupported. Honest phrasing: chosen a priori when scaling the projector
+  8192→1024 (rough λ·D heuristic), **not ablated** — disclose as such.
 - **Why `lightly`, not timm/solo-learn:** lightly gives the *reference loss* + the published
   *two-view transform*; timm is a backbone zoo (no SSL losses); solo-learn/VISSL impose their
   own training loop, but our whole contribution lives in a custom loop. We keep the HF ViT
@@ -60,12 +71,13 @@ code; this explains the *why*.
 
 ---
 
-## 3. Pre-training schedule (the core methodological contribution)
+## 3. Pre-training schedule (the training recipe — standard components, not a novelty claim)
 
 **Shape:** linear warmup (steps) → **constant LR** (stable phase, the full epoch budget) →
 pick the **best-validation checkpoint** → short **cooldown branched from that checkpoint**
 ((1−√t) decay to ~0). No early-stopping trigger; the run always completes its budget.
-This is **WSD** (warmup-stable-decay).
+This is **WSD** (warmup-stable-decay) — we assemble and justify standard components
+(Hägele/MiniCPM); we do not claim the schedule as a contribution.
 
 Decisions, each defensible:
 
@@ -99,8 +111,11 @@ Decisions, each defensible:
    Configurable via `--cooldown_shape`; the margin over cosine is small and untested for BT —
    disclose.
 
-5. **Cooldown length = 0.2 × best_step (≥500 steps floor).** *Why:* ~20% per Hägele/MiniCPM
-   ("2.5% falls short, ~10% suffices"). We size it to **best_step** (the training that
+5. **Cooldown length = 0.2 × best_step (≥500 steps floor).** *Why:* Hägele 2024: cooldown
+   benefit plateaus at ~20% of steps, surpasses cosine at 10–20% (Fig. 5); MiniCPM §4.3 (the
+   correct source of the quote — verified 2026-06-10, it is NOT in Hägele): "a decay of 10% of
+   the total tokens is sufficient … while a decay of 2.5% of total tokens falls short."
+   We size it to **best_step** (the training that
    produced the peak), *not* the full budget — because budgets overshoot the peak, so
    "20% of budget" would give an over-long cooldown when the peak is early. The 500-step floor
    guarantees a *minimum useful* cooldown (a too-short anneal has no low-LR tail); it rarely
@@ -167,7 +182,9 @@ Decisions, each defensible:
 
 ## 6. Learning rate (selected by ablation)
 
-- **LR = 5e-4** (constant, AdamW, batch 250).
+- **LR = 5e-4** (constant, AdamW, batch 250). **Other optimizer HP (verified in code,
+  previously undocumented here): weight decay 1e-4 (`--weight_decay`), gradient clipping 1.0
+  (`--grad_clip`)** — both must be disclosed in the paper's recipe table.
 - **Why AdamW, not the BT paper's LARS:** LARS targets *large-batch CNN* training (batch
   1k–32k); at **batch 250** it offers nothing and would fight the transformer. Every ViT-SSL
   method uses AdamW (DINO, MoCo-v3, MAE). BT's LARS recipe (ResNet-50, batch 2048) doesn't
@@ -226,7 +243,13 @@ Decisions, each defensible:
 ## 9. Augmentations
 
 - **Two-view BYOL transform** (lightly `BYOLView1/2Transform`), input 64, `min_scale=0.25`
-  (publication default; 0.08 collapses at 64px), `cj_strength=1.0` (default), `gaussian_blur=0`.
+  — a **disclosed deviation** from the published/lightly default 0.08, chosen a priori (never
+  ablated; NO measured "0.08 collapses" claim exists — no logged run used 0.08): `scale` is an
+  *area* fraction, so 0.08 at 64×64 allows ~18×18 px crops (vs ~63×63 px at the 224px
+  resolution the recipe was tuned at) — about 2×2 of our 8-px ViT patches, leaving the two
+  views almost no shared content to align (InfoMin: over-aggressive views destroy
+  task-relevant information). 0.25 keeps minimum crops at ~32×32 px. `cj_strength=1.0`
+  (default), `gaussian_blur=0`.
   RandomResizedCrop ratio (0.75, 1.333) (torchvision default — mild aspect stretch exists).
 - **Why these:** the published recipe, reused verbatim so the baseline is verifiably standard;
   augmentation experiments (if pursued) vary `cj_strength`/`min_scale` against it.
@@ -287,7 +310,11 @@ Decisions, each defensible:
 
 ## 12. Threats to validity / limitations (anticipate these questions)
 
-- **Task-aware selection** — *fixed* by the in-domain TI probe (was CIFAR).
+- **No convergence claim** — we report the best-val checkpoint within a *fixed budget*; the
+  budget may not reach convergence for every split. Disclose per-split whether validation
+  plateaued; do not call the curve "converged" or "best-achievable."
+- **Task-aware selection** — *corrected* by switching to the standard in-domain TI probe (we
+  had wrongly used a CIFAR probe earlier); this is fixing our own mistake, not a contribution.
 - **best-on-test eval** — record final-epoch too; disclose.
 - **Model-selection (winner's-curse) inflation** of the selected kNN value — mitigated by
   smoothing; magnitude open on a 200-way/5k-query probe.
@@ -297,9 +324,16 @@ Decisions, each defensible:
 - **Single downstream task (CIFAR-10)** — claims scoped to CIFAR-10 transfer; a VTAB-style
   multi-task suite (CIFAR-100/SVHN/EuroSAT/PCAM/Clevr-count, linear probe on cached features)
   is scoped as an extension. [report: transfer-eval-suites-small-scale]
-- **El-Nouby positioning** — embedding-SSL (BT-family) is the *least* small-data-robust class
-  vs masked/denoising methods (arXiv:2112.10740); our BT-on-small-data weakness is expected and
-  is the assigned method.
+- **El-Nouby positioning** — embedding-SSL (BT-family) is reported *less* small-data-robust
+  than masked/denoising methods (arXiv:2112.10740 abstract: denoising autoencoders "are more
+  robust to the type and size of the pre-training data than popular self-supervised methods
+  trained by comparing image embeddings"; comparative, NOT "least"; BT itself was not tested
+  there). Yan *chose* BT (not assigned — corrected 2026-06-10); any BT-on-small-data weakness
+  is expected from the family positioning, which makes characterizing it interesting.
+  **Deep-read caveat (2026-06-10, docs/research/elnouby-deep-read.md):** their evidence is
+  DINO-only and **fine-tuning-only** (iNat-2019, Table 1); their own §5.4 reports DAEs fall
+  behind joint-embedding methods **under linear probing** (our regime) — always carry the
+  fine-tuning qualifier when citing the robustness claim.
 - **Transfer of large-scale findings** — WSD/cooldown-shape, RankMe, cosine-horizon evidence is
   LLM/large-vision scale; transfer to 1k-image ViT-Tiny BT is *open* and disclosed.
 - **Cross-environment numbers** — random-init floor shifted with a torch/GPU change
@@ -310,14 +344,16 @@ Decisions, each defensible:
 
 ## 13. Key results so far (subject to the final campaign)
 
-- LR ablation (8k): inverted-U, plateau 3e-4–7e-4, 1.5e-3 degrades → **5e-4**.
-- Earlier 3-seed v1-style campaign showed ~+6–7pp over an equal-compute baseline at 1k–4k and
-  parity from 8k; the convergence-based methodology is the contribution that produced that.
-- Over-training is real: a 1k run declines from its peak even with annealing — motivating
-  best-val selection (not end-of-training).
+- LR ablation (8k): inverted-U, plateau 3e-4–7e-4, 1.5e-3 degrades → **5e-4**. (Measured.)
+- An earlier 3-seed campaign differed from an equal-compute baseline (higher at 1k–4k, parity
+  from 8k) — an *observed difference between two training-length policies*, reported as such;
+  **not** a claim that either policy is "correct" or that we corrected the literature.
+- In a long 1k run, downstream accuracy peaked then declined even with annealing → motivates
+  best-val selection over end-of-training. (Observed; the *mechanism* — overfitting — is an
+  interpretation, not measured.)
 
-*(Final numbers come from the convergence-based campaign at commit `e97d41c`, run tag
-`e97d41c-curve`, seed 42 first, then 43/44.)*
+*(Final numbers come from the campaign at commit `e97d41c`, run tag `e97d41c-curve`, seed 42
+first, then 43/44. None of the above is a "converged" measurement.)*
 
 ---
 

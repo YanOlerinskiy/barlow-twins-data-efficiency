@@ -31,7 +31,7 @@ From Zbontar et al. 2021 (arXiv:2103.03230, ICML), verified ablations: accuracy 
 
 ## Q5. Small-image (32–64px) constraints
 
-No clean 64px law. InfoMin's crop sweet spot is **resolution-scaled** (less spatial room at 64px); CIFAR-scale SSL is viable but augmentation-sensitive. Our min_scale 0.08 collapse at 64px is consistent with Jing mechanism (1).
+No clean 64px law. InfoMin's crop sweet spot is **resolution-scaled** (less spatial room at 64px); CIFAR-scale SSL is viable but augmentation-sensitive. ~~Our min_scale 0.08 collapse at 64px is consistent with Jing mechanism (1).~~ [Correction 2026-06-10: no logged run ever used min_scale=0.08 — there is NO measured 0.08 failure; min_scale=0.25 is an a-priori geometric choice (0.08 of 64² ≈ 18×18 px crops), not a response to an observed collapse.]
 
 ## Established vs Folklore
 

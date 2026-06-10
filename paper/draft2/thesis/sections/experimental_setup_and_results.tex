@@ -1,0 +1,111 @@
+\section{Experimental Setup and Results}
+\label{sec:experiments}
+
+\subsection{Experimental setup}
+\label{sec:setup}
+
+\textbf{Pre-training data and splits.}
+Pre-training uses Tiny-ImageNet~\cite{le2015tinyimagenet}: 100\,000 training
+images, 200 classes, native $64\times64$ resolution
+(Figure~\ref{fig:datasets}); labels are never used during pre-training. The
+pre-training set sizes are $N \in \{1\mathrm{k}, 2\mathrm{k}, 4\mathrm{k},
+8\mathrm{k}, 16\mathrm{k}, 32\mathrm{k}, 64\mathrm{k}, 100\mathrm{k}\}$,
+drawn as prefixes of a single shuffled master list (seed 42) that interleaves
+one image per class, so every split is exactly class-balanced and smaller
+splits are subsets of larger ones. The nesting means a larger split differs
+from a smaller one only by the images added, so curve differences are
+attributable to $N$ alone.
+
+\textbf{Budgets and validation probe.}
+Each split trains a fixed epoch budget of \{1k--8k: 1000, 16k: 600, 32k: 400,
+64k: 300, 100k: 250\} epochs. Budgets shrink with $N$ because small splits
+reach their validation peak only after hundreds of epochs while large splits
+peak within tens; each budget is sized to be generously past the peak, not to
+a convergence criterion, and runs are extendable when a split's validation is
+still rising at its budget end (disclosed per split in
+Section~\ref{sec:results_curve}). The validation probe runs every 4 epochs:
+the Tiny-ImageNet \texttt{valid} split (10\,000 labelled images held out from
+all pre-training splits) is partitioned class-stratified into a 5\,000-image
+gallery and 5\,000-image query set (25 per class each), and the query images
+are classified by their $k{=}20$ nearest gallery neighbours (Euclidean
+distance, unweighted) in CLS-embedding space. The same probe also records the
+effective rank of the query embeddings, as the dimensional-collapse
+diagnostic of Section~\ref{sec:results_overtraining} --- logged only, never
+used for selection.
+
+\textbf{Downstream evaluation.}
+The annealed encoder is frozen, and a single linear layer
+($192\rightarrow10$) is trained on CIFAR-10~\cite{krizhevsky2009cifar},
+resized $32\rightarrow64$ (bilinear) and ImageNet-normalized to match
+pre-training statistics. The probe protocol is shared across the five-student
+project: SGD with momentum 0.9, no weight decay, batch 512, learning rate
+$0.2$ ($0.1 \times \mathrm{batch}/256$, the linear scaling rule), cosine
+annealed to zero over 100 epochs, fixed evaluation seed independent of the
+pre-training seed. Two protocol details are disclosed: the training
+transform includes a random horizontal flip, and we report the best test
+top-1 accuracy across the 100 probe epochs --- a metric that peeks at the
+test curve; the final-epoch accuracy is recorded alongside and the gap
+reported (Section~\ref{sec:limitations}).
+
+\textbf{Baselines.}
+A random-initialization floor applies the identical probe protocol to an
+untrained encoder; it isolates how much of the linear-probe accuracy is
+bought by pre-training rather than by the architecture and the probe itself.
+
+\textbf{Seeds, tuning, and provenance.}
+Every (split, seed) pre-training run is indexed by the code commit, the split
+size, and the seed; the campaign uses seeds 42, 43, 44, and curves report
+mean and spread over seeds. One hyperparameter was tuned: the learning rate,
+by a one-off ablation on the 8k split over $\{1, 3, 5, 7, 15\} \times
+10^{-4}$. The result is an inverted U: $10^{-4}$ under-trains, $3$--$7
+\times 10^{-4}$ form a plateau within probe noise, and $1.5 \times 10^{-3}$
+degrades both accuracy and effective rank. We picked $5 \times 10^{-4}$ ---
+the plateau center, and the reference value of DINO at batch
+256~\cite{caron2021dino} --- and use this single rate for all splits, keeping
+$N$ the only variable that changes across the curve. All remaining
+hyperparameters are fixed by the shared protocol or by the published recipes
+cited in Section~\ref{sec:method}. All runs execute on one consumer GPU;
+wall-clock costs are reported in Section~\ref{sec:discussion}.
+
+\begin{figure}[t]
+  \centering
+  % [PLACEHOLDER --- replaced by figures/dataset_samples.pdf in the figure pass]
+  \fbox{\parbox[c][3.2cm][c]{0.92\linewidth}{\centering\small
+    Dataset samples (pending): a grid of Tiny-ImageNet images ($64\times64$,
+    200 classes) next to CIFAR-10 images ($32\times32$, 10 classes, shown
+    resized to $64\times64$).}}
+  \caption{Pre-training and downstream data. Tiny-ImageNet (left) provides
+  the unlabelled pre-training images at $64\times64$; CIFAR-10 (right),
+  resized to the same resolution, is the downstream classification task. The
+  two datasets share no images, so the linear probe measures transfer of the
+  learned representation, not recall of the pre-training set.}
+  \label{fig:datasets}
+\end{figure}
+
+% ---------------------------------------------------------------------------
+% [ALL PENDING] Question-headed result subsections (WE1/WE2); written as
+% hypothesis-style stubs until the campaign finishes; interpretations flagged.
+% ---------------------------------------------------------------------------
+
+\subsection{How does downstream accuracy scale with pre-training set size?}
+\label{sec:results_curve}
+[PENDING --- data-efficiency curve over \{1k...100k\} with random-init floor
+(and supervised ceiling if run); per split, disclose whether the validation
+signal plateaued within the budget.]
+
+\subsection{At the smallest scales, does Barlow Twins over-train --- and is it collapse?}
+\label{sec:results_overtraining}
+[PENDING --- long-run accuracy and effective-rank traces on the smallest
+split(s); observation stated firmly, the overfitting mechanism labelled as an
+interpretation we did not isolate.]
+
+\subsection{Does projector width interact with dataset size?}
+\label{sec:results_projector}
+[PENDING --- accuracy vs projector dimension \{256, 512, 1024, 2048\} on the
+smaller splits, $\geq 2$ seeds; report a shift of the best width with $N$, or
+the null result.]
+
+\subsection{Does the in-domain selection signal track downstream accuracy?}
+\label{sec:results_correlation}
+[PENDING, optional --- kNN(Tiny-ImageNet) vs CIFAR-10 probe correlation across
+checkpoints from the diagnostic pass.]
