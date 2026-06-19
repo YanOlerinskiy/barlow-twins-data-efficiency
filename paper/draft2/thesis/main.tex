@@ -19,6 +19,14 @@
 \usepackage{cite} % sorts grouped numeric citations: [2,5,7] not [7,2,5]
 \urlstyle{same}
 
+% Keep floats close to their references: allow fuller float tops/pages.
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\bottomfraction}{0.6}
+\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.85}
+\setcounter{topnumber}{3}
+\setcounter{totalnumber}{5}
+
 
 \begin{document}
 
@@ -44,8 +52,6 @@
 
 \bibliographystyle{plain}
 \bibliography{references}
-
-\input{sections/appendix}
 
 \end{document}
 

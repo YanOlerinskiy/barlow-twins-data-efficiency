@@ -1,8 +1,39 @@
 \section{Responsible Research}
 \label{sec:responsible_research}
-% [WRITE NOW] Reproducibility: fixed seeds, deterministic cuDNN + TF32 note,
-% (commit, split, seed) indexing, open code + published split indices, full
-% hyperparameter disclosure, resumable checkpoints. Ethics: public datasets and
-% licensing (Tiny-ImageNet as ImageNet derivative), compute/energy footprint,
-% honest reporting (disclosed deviations, no convergence claims).
-[TODO: Responsible research --- drafted after Limitations.]
+
+\textbf{Reproducibility.} Every pre-training run is indexed by code commit,
+split size, and seed. Each checkpoint stores the git revision that produced
+it, and resuming a run across code versions triggers an explicit warning, so
+no reported number mixes two versions of the training code. The data
+pipeline is deterministic given its seed: the nested splits are prefixes of
+one published shuffled index list, and training fixes all framework seeds
+with deterministic cuDNN kernels. One precision exception is disclosed --- pre-training
+matrix multiplications use TF32, which is reproducible on the same
+hardware but not bit-identical to fp32 across machines; the linear-probe
+evaluation runs in fp32 --- and Section~\ref{sec:limitations} discloses a
+cross-revision provenance caveat for the largest splits. All hyperparameters appear in
+Sections~\ref{sec:method} and~\ref{sec:setup}, including deviations from
+published defaults. The code, split indices, evaluation scripts, and figure
+scripts are kept under version control alongside the logged metrics of
+every run, and one consumer GPU reproduces any single curve point in hours
+(Section~\ref{sec:discussion}).
+
+\textbf{Honest reporting.} Checkpoint selection never sees the downstream
+dataset, result claims are scoped to best-within-budget readings, and the
+known metric inflations and untested constants are collected in
+Section~\ref{sec:limitations} with their direction stated. Interpretations
+are labeled as interpretations, and unflattering outcomes --- a curve that
+dips, splits whose validation had not plateaued, an inflation we cannot yet
+quantify --- are reported as such.
+
+\textbf{Data and ethics.} The study uses two long-established public
+research datasets, Tiny-ImageNet (an ImageNet derivative) and CIFAR-10,
+under their existing research terms. No new data is collected and no human
+subjects are involved. The datasets inherit the documented limitations of
+their sources, including category and imagery biases; nothing in this study
+audits or corrects them, and the learned encoders are research artifacts for
+measuring data efficiency, not models intended for deployment. The compute
+footprint is deliberately small --- a single consumer GPU for hours rather
+than GPU-years. Keeping the study reproducible at that scale is part of the
+research setting itself: making the behavior of self-supervised methods
+measurable with resources most groups have.

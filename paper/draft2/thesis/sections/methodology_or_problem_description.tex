@@ -4,11 +4,13 @@
 The method has four parts: a small vision-transformer encoder
 (Section~\ref{sec:method_arch}), the Barlow Twins objective on two augmented
 views (Sections~\ref{sec:method_loss} and~\ref{sec:method_views}), and a
-training schedule with label-free checkpoint selection
+training schedule with downstream-blind checkpoint selection
 (Section~\ref{sec:method_schedule}, Figure~\ref{fig:schedule}). The encoder
-and the objective follow their published versions; the schedule is assembled
-from standard, cited components. Deviations from published defaults are
-disclosed where they occur.
+and objective follow their published versions, and the schedule is assembled
+from standard, cited components. The recipe deviates from published defaults
+in a handful of places --- $\lambda$, projector width, two augmentation
+bounds, the optimizer --- each marked where it occurs; the untested
+constants among them are collected in Section~\ref{sec:limitations}.
 
 \subsection{Encoder and projector}
 \label{sec:method_arch}
@@ -19,13 +21,13 @@ $8\times8$ patches operating on $64\times64$ images: 12 transformer layers,
 size matches the native resolution of the pre-training images, giving
 $8\times8=64$ patch tokens plus a classification (CLS) token. The
 representation evaluated downstream is the CLS token after the final layer
-normalization. During pre-training only, a projector maps this 192-dimensional
-embedding to the space where the loss is computed: three linear layers
-($192\rightarrow1024\rightarrow1024\rightarrow1024$), the first two followed
-by batch normalization and ReLU. The projector follows the Barlow Twins
-design~\cite{zbontar2021barlow} scaled down from its original 8192 dimensions
---- at 8192 the projector alone would exceed the encoder in parameter count
---- and is discarded after pre-training.
+normalization. During pre-training only, a projector maps this
+192-dimensional embedding to the space where the loss is computed: three
+linear layers ($192\rightarrow1024\rightarrow1024\rightarrow1024$), the first
+two followed by batch normalization and ReLU. The projector follows the
+Barlow Twins design~\cite{zbontar2021barlow} scaled down from its original
+8192 dimensions, at which the projector alone would exceed the encoder in
+parameter count. It is discarded after pre-training.
 
 \subsection{Barlow Twins objective}
 \label{sec:method_loss}
@@ -53,20 +55,18 @@ pushes $\mathcal{C}$ toward the identity matrix,
   \;+\; \lambda \sum_{i} \sum_{j \neq i} \mathcal{C}_{ij}^{2},
   \label{eq:btloss}
 \end{equation}
-where the first term enforces invariance across views and the second
-decorrelates output dimensions, with $\lambda$ weighting the two. A constant
+where the first term enforces invariance across views, the second
+decorrelates output dimensions, and $\lambda$ weights the two. A constant
 representation cannot satisfy Equation~\ref{eq:btloss}: the diagonal of
 $\mathcal{C}$ requires unit per-dimension correlation across views, so the
 objective itself penalizes complete collapse, without negative pairs or
 asymmetric networks~\cite{zbontar2021barlow}. We use the reference
 implementation of the loss from the \texttt{lightly}
 library~\cite{susmelj2020lightly} rather than reimplementing it, because the
-loss has known silent failure modes (normalization along the wrong axis,
-incorrect off-diagonal scaling) that a reference implementation rules out. We
-set $\lambda = 10^{-2}$, deviating from the reference default $5 \cdot
-10^{-3}$ that was tuned at projector width 8192~\cite{zbontar2021barlow}; our
-value was chosen a priori alongside the narrower projector and was not
-ablated.
+loss has known silent failure modes --- normalization along the wrong axis,
+incorrect off-diagonal scaling --- that a reference implementation rules
+out. We set $\lambda = 10^{-2}$; the reference default $5 \cdot 10^{-3}$ was
+tuned at projector width 8192~\cite{zbontar2021barlow}.
 
 \subsection{View generation}
 \label{sec:method_views}
@@ -74,21 +74,32 @@ ablated.
 The two views are produced by the published two-view BYOL augmentation
 pipeline~\cite{grill2020byol}, as implemented in
 \texttt{lightly}~\cite{susmelj2020lightly}: random resized crop, horizontal
-flip, color jitter (strength 1.0), and random grayscale; the second view
-additionally solarizes with probability 0.2. We deviate from the published
-recipe in two disclosed ways, both adaptations to $64\times64$ inputs. First,
-Gaussian blur is disabled on both views: its kernel is sized for
-$224\times224$ inputs. Second, the random crop retains at least 25\% of the
-image area rather than the published 8\%: the crop scale is an area fraction,
-so at $64\times64$ an 8\%-area crop keeps roughly $18\times18$ pixels ---
-about $2\times2$ of our 8-pixel patches --- leaving two views little shared
-content to align, and views that share too little information remove
-task-relevant signal~\cite{tian2020infomin}. At $224\times224$, where the
-recipe was tuned, the same fraction still keeps roughly $63\times63$ pixels.
-Both bounds were set a priori and not ablated.
+flip, color jitter (strength 1.0), and random grayscale, with the second view
+additionally solarized with probability 0.2. Two parts of the recipe are
+adapted to $64\times64$ inputs. Gaussian blur is disabled on both views,
+since its kernel is sized for $224\times224$ images. The random crop retains
+at least 25\% of the image area rather than the published 8\%. The crop
+scale is an area fraction, so at $64\times64$ an 8\%-area crop keeps roughly
+$18\times18$ pixels --- about $2\times2$ of our 8-pixel patches --- and two
+such views may share almost no content; views that share too little
+information lose task-relevant signal~\cite{tian2020infomin}. At
+$224\times224$, where the recipe was tuned, the same fraction still keeps
+roughly $63\times63$ pixels.
 
 \subsection{Training schedule and checkpoint selection}
 \label{sec:method_schedule}
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/schedule.pdf}
+  \caption{The training schedule, drawn with the 1k-split geometry; the
+  learning-rate curves are the exact functions used in training. The rate
+  warms up for 500 steps and stays constant while a kNN probe periodically
+  scores the encoder; after the budget ends, training rewinds to the
+  best-probe checkpoint for a short $(1-\sqrt{t})$ cooldown. No training
+  horizon is committed in advance.}
+  \label{fig:schedule}
+\end{figure}
 
 Training follows a warmup-stable-decay (WSD)
 schedule~\cite{hagele2024scaling,hu2024minicpm,zhai2022scalingvit}
@@ -96,70 +107,52 @@ schedule~\cite{hagele2024scaling,hu2024minicpm,zhai2022scalingvit}
 first 500 optimizer steps, then stays constant for the remainder of a fixed
 epoch budget. We warm up in optimizer steps rather than the conventional ``10
 epochs''~\cite{zbontar2021barlow,caron2021dino} because warmup stabilizes
-optimizer updates, and an epoch-based rule degenerates across our set sizes
-(at batch 250 it would give 40 warmup steps on 1k images and 4\,000 on 100k).
+optimizer updates, and an epoch-based rule degenerates across our set sizes:
+at batch 250 it would give 40 warmup steps on 1k images and 4\,000 on 100k.
 
 A constant rate, rather than the cosine decay common in self-supervised
-pre-training, serves the selection mechanism: under a cosine schedule a
+pre-training, serves the selection mechanism. Under a cosine schedule, a
 checkpoint read out well before the horizon attains higher loss than a model
 whose schedule was matched to that
 duration~\cite{hoffmann2022chinchilla,loshchilov2017sgdr}, so checkpoints
-from different training stages would not be comparable, while under a
-constant rate every checkpoint is schedule-equivalent. It also leaves runs
-extendable, since no horizon is baked into the schedule. WSD schedules match
-the final loss of a well-tuned cosine schedule~\cite{hagele2024scaling}, so
-this convenience is not bought with accuracy --- though that evidence is from
-language-model pre-training and its transfer to our setting is an assumption
-we disclose (Section~\ref{sec:limitations}).
+from different training stages are not comparable. Under a constant rate
+they are, and runs stay extendable because no horizon is baked into the
+schedule. The convenience costs nothing in final loss at language-model
+scales~\cite{hagele2024scaling}; whether that finding transfers to our
+setting is an assumption (Section~\ref{sec:limitations}).
 
-During the stable phase, a $k$-nearest-neighbour probe on held-out in-domain
+During the stable phase, a $k$-nearest-neighbor probe on held-out in-domain
 data scores the encoder at a fixed epoch interval
-(Section~\ref{sec:setup}), and the checkpoint with the best \emph{smoothed}
-probe accuracy (mean of the last three probes) is retained. Smoothing
-matters because selecting the maximum of a noisy, repeatedly evaluated signal
-is biased toward flukes~\cite{cawley2010overfitting}. Selection is in-domain
---- the probe never sees the downstream dataset --- following standard
+(Section~\ref{sec:setup}). The checkpoint with the best smoothed probe
+accuracy, the mean of the last three probes, is retained. Smoothing matters
+because the maximum of a noisy, repeatedly evaluated signal is biased toward
+flukes~\cite{cawley2010overfitting}. The probe never sees the downstream
+dataset; selection is in-domain, following standard
 practice~\cite{caron2021dino}.
 
-After the budget completes, a cooldown branch restarts from the selected best
+After the budget completes, a cooldown branch restarts from the selected
 checkpoint and anneals the learning rate to zero over $0.2 \times
-t_{\mathrm{best}}$ steps (where $t_{\mathrm{best}}$ is the selected
-checkpoint's step; floor 500 steps), with the $(1-\sqrt{t})$ decay shape that
-performed best in the cooldown-shape ablation of H\"agele et
-al.~\cite{hagele2024scaling}; decays of roughly 10\% of training suffice
+t_{\mathrm{best}}$ steps with a floor of 500, where $t_{\mathrm{best}}$ is
+the selected checkpoint's step. The $(1-\sqrt{t})$ decay shape attained the
+lowest final loss in the cooldown-shape ablation of H\"agele et
+al.~\cite{hagele2024scaling}, and decays of roughly 10\% of training suffice
 where 2.5\% falls short~\cite{hu2024minicpm}. Branching the cooldown from a
-checkpoint follows MiniCPM~\cite{hu2024minicpm}; rewinding to the
-\emph{best-validation} checkpoint rather than the last one is our adaptation
-(disclosed, not claimed standard): on small sets the probe accuracy can peak
-and then decline within the budget, and annealing the last checkpoint would
+checkpoint follows MiniCPM~\cite{hu2024minicpm}. Rewinding to the
+\emph{best-validation} checkpoint rather than the last one is our own
+adaptation: in preliminary runs on the smallest split, probe accuracy peaked
+and then declined within the budget, and annealing the last checkpoint would
 anneal a degraded model. The annealed model is the one evaluated downstream.
 
-Throughout, we train with AdamW~\cite{loshchilov2019adamw} (weight decay
-$10^{-4}$, gradient-norm clipping 1.0) at batch size 250. AdamW replaces the
-original recipe's LARS optimizer, which targets large-batch convolutional
-training (batch 1k--32k); at our batch size, ViT self-supervised methods use
+Throughout, we train with AdamW~\cite{loshchilov2019adamw}, weight decay
+$10^{-4}$ and gradient-norm clipping 1.0, at batch size 250. AdamW replaces
+the original recipe's LARS optimizer, which targets large-batch
+convolutional training; at our batch size, ViT self-supervised methods use
 AdamW throughout~\cite{caron2021dino,chen2021mocov3,he2022mae}. The batch
 size is 250 rather than the conventional 256 because 250 divides every
 pre-training set size, so with a drop-last loader one epoch is exactly one
 exposure of every image at every $N$ --- with batch 256, an epoch on the 1k
-split would silently skip almost a quarter of it. The fixed
-epoch budget is generous rather than calibrated: we do \emph{not} claim the
-selected checkpoints are trained to convergence, and we disclose per set size
-whether the validation signal plateaued within the budget
-(Section~\ref{sec:results_curve}).
+split would silently skip almost a quarter of it. The fixed epoch budget is
+generous rather than calibrated: we do not claim the selected checkpoints are
+trained to convergence, and Section~\ref{sec:results_curve} reports per set
+size whether the validation signal plateaued within its budget.
 
-\begin{figure}[t]
-  \centering
-  % [PLACEHOLDER --- replaced by figures/schedule.pdf in the figure pass]
-  \fbox{\parbox[c][3.2cm][c]{0.92\linewidth}{\centering\small
-    Schedule schematic (pending): linear warmup $\rightarrow$ constant LR
-    with periodic kNN probes $\rightarrow$ best smoothed-probe checkpoint
-    marked $\rightarrow$ $(1-\sqrt{t})$ cooldown branched from it.}}
-  \caption{The training schedule. The learning rate warms up for 500 steps
-  and stays constant while a kNN probe periodically scores the encoder; after
-  the fixed budget ends, training rewinds to the best-probe checkpoint and a
-  short $(1-\sqrt{t})$ cooldown anneals the learning rate to zero. Every
-  stable-phase checkpoint is schedule-comparable, and no training horizon is
-  committed in advance.}
-  \label{fig:schedule}
-\end{figure}

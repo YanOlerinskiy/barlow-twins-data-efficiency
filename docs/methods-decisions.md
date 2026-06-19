@@ -170,8 +170,12 @@ Decisions, each defensible:
   as N grows because steps/epoch grows.
 - **Time-targeted (~9h, single GPU).** Calibrated from a real run: 8k @ 500 ep (16k steps) =
   **1440 s ≈ 13 steps/s** (Blackwell + TF32). Per-epoch ≈ (split/250)×0.078 + probe overhead.
-- **Budgets are non-critical & resumable.** best-val + cooldown capture the peak regardless of
-  how far past it you train, so the exact budget only needs to be "generous past the peak."
+- **Budgets are non-critical & resumable — CORRECTED 2026-06-10:** best-val + cooldown capture
+  the **TI** peak regardless of how far past it you train, **but the final CIFAR number is
+  budget-dependent when the TI signal has not plateaued** (TI keeps rising → TI-best lands later
+  → CIFAR transfer regresses; measured: the seed-42 campaign dips 1.8pp at 4k–8k, with a
+  4.7pp kNN-level oracle gap at 8k — see paper §4.4). "Non-critical" holds only for splits
+  whose TI signal peaks within budget.
   If a split is still rising at its budget, **extend it** with `--resume_from` (see §7). This
   is *why* we can afford rough budgets. Following Cole et al. 2022 (arXiv:2105.05837) on
   data-quantity SSL (they used constant 1000 epochs across sizes). [report:
@@ -190,12 +194,15 @@ Decisions, each defensible:
   method uses AdamW (DINO, MoCo-v3, MAE). BT's LARS recipe (ResNet-50, batch 2048) doesn't
   transfer. *Consequence:* the comparable LRs are the **AdamW-ViT-SSL @ batch-256** ones, not
   BT's LARS LR.
-- **Ablation (one-off, on split 8k):** LR ∈ {1e-4, 3e-4, 5e-4, 7e-4, 1.5e-3}. Result is an
-  **inverted-U**: 1e-4 under-trains, **3e-4–7e-4 form a plateau** (within probe noise), 1.5e-3
-  **degrades** (lower accuracy *and* lower effective rank). `effective_rank` peaks at 3e-4 and
-  falls monotonically with higher LR — corroborating the high end trades representation
-  diversity. **We pick 5e-4** = plateau center + DINO's batch-256 reference value
-  (`main_dino.py --lr 5e-4`). 3e-4 was the equally-defensible conservative alternative.
+- **Ablation (one-off, on split 8k):** LR ∈ {1e-4, 3e-4, 5e-4, 7e-4, 1.5e-3}. **Exact numbers
+  extracted from W&B summaries 2026-06-10 (full runs at commit 905506c, single seed):** best
+  kNN(TI) at selected checkpoint = 13.9 / 14.7 / 15.3 / 15.8 / 3.9 %; budget-end effective
+  rank = 55 / 100 / 94 / 81 / 8. NB: **7e-4 is nominally highest** (+0.5pp over 5e-4) — do NOT
+  describe the band as "a plateau within probe noise" alone; the honest pick rationale is
+  mid-band + near-peak effective rank (declines beyond 3e-4) + DINO's batch-256 reference
+  (`main_dino.py --lr 5e-4`). 1.5e-3 **fails outright** (best step 256 — inside warmup; rank
+  8/192). Now reported in the paper as Table 1 (§4.1), disclosed as single-seed at an earlier
+  code revision.
 - **One LR for all splits** (don't vary with N → single-variable / change-one-variable, RP9).
 - **Defense line:** *"LR chosen by a one-off ablation over the AdamW-ViT-SSL range; an
   inverted-U with a 3e-4–7e-4 plateau and degradation at 1.5e-3; 5e-4 = plateau center and

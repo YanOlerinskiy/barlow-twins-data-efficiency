@@ -1,7 +1,66 @@
 \section{Discussion}
 \label{sec:discussion}
-% [WRITE NOW for reasoning parts] Augmentation as a principled non-choice
-% (invariance argument; InfoMin; Xiao); neutral compute paragraph (wall-clock
-% reporting); implications phrased tentatively with [PENDING] hooks to results.
-[TODO: Discussion --- reasoning parts drafted in Phase 1; result-dependent
-parts marked PENDING.]
+
+This work trained Barlow Twins on nested Tiny-ImageNet subsets under fixed
+generous budgets with downstream-blind checkpoint selection, and measured
+each selected encoder by a CIFAR-10 linear probe against a
+random-initialization floor. Three observations stand out: pre-training
+pays at every set size (19.9 to 30.0 points over the floor), the curve dips
+at 4k--8k, and the dip coincides with the largest measured divergence
+between the selection signal and downstream accuracy.
+
+\paragraph{What the dip means.}
+The naive reading of a data-efficiency curve is that each point reflects
+the value of that much data. Our results say the points also reflect the
+\emph{stopping and selection policy}: where the in-domain signal and the
+transfer optimum diverge, a downstream-blind protocol ships a checkpoint
+well past the transfer peak, and at the diagnostic level the 4k--16k cost
+of doing so (up to 4.7 points) exceeds what the added data buys. The
+matched-compute slice of Section~\ref{sec:results_decoupling} is the
+sharpest evidence that the data itself is not at fault: read at an equal
+step count, before the protocols diverge, more data monotonically helps. The practical reading, stated
+tentatively: in this regime, what a practitioner measures to stop and
+select is as consequential as how much unlabeled data they have. We would
+not have seen this with downstream-based selection --- selecting on the
+downstream signal hides the divergence by construction, at the price of
+tuning the shipped checkpoint to the evaluation task; the
+downstream-selected campaign in Section~\ref{sec:results_decoupling} gives
+a budget-confounded estimate of that tuning from the other side.
+
+\paragraph{Does the family-level robustness ranking apply here?}
+The report that joint-embedding methods need more pre-training data than
+masked-prediction methods rests on fine-tuning
+evaluation~\cite{elnouby2021largescale}, and the same study finds denoising
+autoencoders comparatively weak under linear probing. Whether the ranking
+carries over to linear-probe evaluation at our scale is therefore open. Our
+curve contributes one joint-embedding data point measured under a linear
+probe, at set sizes one to two orders of magnitude below those tested
+there --- with the added nuance that at small scale, the measured
+``robustness to set size'' depends on the selection policy as much as on
+the method. The five-method group curve this study is part of includes a
+masked-autoencoder arm under the same protocol and will offer a first
+side-by-side look, with the caveat that per-method tuning differs across
+students.
+
+\paragraph{Why augmentations stayed fixed.}
+If augmentations act chiefly as artificial dataset
+enlargement~\cite{moutakanni2024you}, strengthening them is the obvious
+lever exactly where data is scarce, and it is fair to ask why we left them
+alone. An augmentation is a commitment: a joint-embedding method learns to
+be invariant to whatever its augmentations vary~\cite{xiao2021what}, so a
+stronger augmentation buys small-$N$ robustness by discarding the
+distinctions it augments away --- a representation made invariant to color
+cannot separate red from yellow cars~\cite{xiao2021what} --- and which
+distinctions a downstream task needs is unknown at pre-training time in a
+pre-train-once, probe-anywhere setting. Augmentation strength also
+interacts with $N$ itself, so varying both would confound the curve.
+Varying a capacity knob instead --- the Barlow Twins projector width ---
+leaves data, views, and objective untouched; that study is scoped as the
+immediate next step (Section~\ref{sec:conclusion}).
+
+\paragraph{Compute.}
+The eight stable phases of the campaign total 10.2 GPU-hours on one
+consumer GPU; each cooldown adds minutes (up to roughly 25 for the largest
+split, sized as 20\% of its selected step), and each linear probe takes
+about 6 minutes. We report these numbers so that others can budget similar
+studies.

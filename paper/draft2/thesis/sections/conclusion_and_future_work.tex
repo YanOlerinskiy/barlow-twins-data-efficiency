@@ -1,8 +1,29 @@
 \section{Conclusions and Future Work}
 \label{sec:conclusion}
-% [Skeleton now; answer PENDING] One-paragraph answer to the RQ + honest
-% takeaway + future directions (transfer suite, PEFT fine-tuning,
-% projector-scaling). Stand-alone readable.
-[PENDING --- the conclusion answers the research question once the campaign
-results are in. Planned future directions: a multi-task transfer suite,
-parameter-efficient fine-tuning versus linear probing, and projector scaling.]
+
+We asked how much downstream accuracy each additional unlabeled
+pre-training image buys a Barlow Twins--trained small vision transformer,
+and what happens when the images are few. The answer, for one seed within
+fixed generous budgets: every amount of pre-training data helps
+substantially over a random-initialized encoder (by 19.9 points at 1k
+images, 30.0 at 100k), but the value of \emph{additional} data is not
+monotone --- the 4k and 8k subsets transfer worse than 1k. The smallest
+split over-trains, losing 18\% of its peak validation accuracy with no
+sign of dimensional collapse, and the curve's dip coincides with the
+largest measured divergence between the in-domain selection signal and
+downstream accuracy. The honest takeaway is that at this scale, a
+data-efficiency curve is a property of data \emph{and} protocol: at the
+level of our diagnostic, the stopping and selection policy left as strong a
+mark on the mid-range points as the data quantity did.
+
+Three steps follow directly. The remaining pre-training seeds and the
+probe-level oracle comparison (the pipeline now saves the diagnostic-peak
+checkpoints) will show how much of the dip survives seed variance and
+carries from the diagnostic to the linear probe; re-running one mid-range split
+under a shorter budget would test the budget side of the same coin. The
+projector-width study --- the Barlow Twins-specific capacity knob, held
+fixed here --- is the scoped next extension. Beyond those, a multi-task probe suite would test whether the
+conclusions extend past CIFAR-10, and evaluating parameter-efficient
+fine-tuning would connect this characterization to the regime where the
+family-level data-robustness evidence was
+established~\cite{elnouby2021largescale}.

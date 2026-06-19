@@ -145,6 +145,25 @@ it is motivated/introduced; every claim can be challenged, so every claim is mot
 - [ ] Tables/figures: numbered + captioned, each referred to in text, interpretable standalone.
 - [ ] Intro and conclusion understandable by any CS-bachelor reader.
 
+## Course rules of thumb (CSE3000 course page — check at every revision)
+
+- [ ] Front page: name, EMAIL ADDRESS, affiliation (TU Delft), supervisors
+      mentioned. NO student number anywhere.
+- [ ] Length: **max 8 pages two-column, EXCLUDING title page, references, and
+      the Responsible Research section** (or 14 pages single-column). Recount
+      after every substantial edit.
+- [ ] NO appendices — they are not graded; everything that matters goes in
+      the body.
+- [ ] Conciseness is the FIRST criterion of the writing rubric item: shorter
+      is better; a picture says more than a thousand words.
+- [ ] References workload: ~10–20 scanned, ~5 read completely (contribution
+      summarized in own words), 2–3 studied in depth (able to explain and
+      criticize). More references allowed, but depth over breadth.
+- [ ] Audience: experts AND novices (fellow students); assume a (nearly)
+      finished CS bachelor/master who can read literature; the paper must be
+      understandable WITHOUT reading other work; known methods need detail
+      only if the contribution modifies them.
+
 ## Project hard rules (override everything; from the thesis owner)
 
 - [ ] No unsupported empirical claims — every empirical sentence has a measurement behind it.
