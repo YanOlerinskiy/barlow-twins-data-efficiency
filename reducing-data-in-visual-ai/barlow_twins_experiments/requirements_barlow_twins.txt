@@ -1,0 +1,22 @@
+# Working dependency set for the Barlow Twins method (Yan).
+# Use this INSTEAD of the shared requirements.txt, which pins versions that
+# don't resolve (`torch==2.11.0` etc.).
+#
+# torch is pinned to 2.12.x: its default PyPI wheel ships CUDA 13.0 with
+# sm_120 (Blackwell / RTX 50xx) kernels — needed for the local RTX 5070 Ti.
+# Do NOT install from the cu128 index URL; CUDA 12.8 wheels were removed
+# from PyTorch's build matrix in 2.12.
+#
+# Install:
+#   pip install -r barlow_twins_experiments/requirements_barlow_twins.txt
+
+torch==2.12.*
+torchvision
+numpy
+datasets
+transformers
+lightly==1.5.24
+wandb
+scikit-learn
+matplotlib
+tqdm

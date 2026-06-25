@@ -1,0 +1,12 @@
+datasets==4.8.5
+numpy==2.4.4
+torch==2.11.0
+torchvision==0.26.0
+
+# Added for Barlow Twins (Yan)
+lightly
+transformers
+wandb
+scikit-learn
+matplotlib
+tqdm
