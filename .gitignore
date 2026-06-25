@@ -1,5 +1,13 @@
-# Nested group repo manages itself
-reducing-data-in-visual-ai/
+
+docs/
+meeting_notes/
+meeting_slides/
+paper/
+poster/
+poster.zip
+
+# Nested repo
+# reducing-data-in-visual-ai/
 
 # Local vscode settings
 .vscode
